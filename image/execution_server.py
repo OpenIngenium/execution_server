@@ -1185,7 +1185,9 @@ class HaltHandler(RequestLogHandler):
                             logfile_url = script_status_info.get('logfile_url')
 
                             if logfile_url:
-                                fileserver_logfile_url= ingenium_library.get_fileserver_logfile_url(logfile_url, custom_script_session_id)
+                                # Note that states in output_json are not used to update execution states for the execution since the step was canceled,
+                                # which is consistent with the behavior of EHA steps.
+                                fileserver_logfile_url, output_json = ingenium_library.process_cs_files(logfile_url, custom_script_session_id)
                                 step_execution['results']['log_file_url'] = fileserver_logfile_url
                             else:
                                 logger.warning(f'Failed to get custom script logfile_url.')

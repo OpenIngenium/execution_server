@@ -1,0 +1,12 @@
+*.pem
+ve3/
+image/ve3/
+image/ve
+image/gateway/__pycache__
+tests/test-reports/
+tests/ve3
+tests/ve
+tests/__pycache__
+.vscode
+image/__pycache__/
+image/ingenium_embedded/__pycache__/

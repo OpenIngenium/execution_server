@@ -237,11 +237,12 @@ def run(step):
     logfile_lines = script_status_info.get("logfile_lines")
     details = logfile_lines if isinstance(logfile_lines, list) else [str(logfile_lines)]
     
+    output_json = {}
     fileserver_logfile_url = ''
     if logfile_url is not None:
         logger.info("Retrieving custom script logs tarball from GDS host...")
         try:
-            fileserver_logfile_url= ing_lib.get_fileserver_logfile_url(logfile_url, scriptRunId)
+            fileserver_logfile_url, output_json = ing_lib.process_cs_files(logfile_url, scriptRunId, custom_script_response)
         except StepExecutionError as ex:
             msg = "There was an error retrieving the custom script logs tarball"
             # log statement
@@ -257,6 +258,21 @@ def run(step):
             })
             return return_step_with_error(step, ex.error_obj)
         
+    # update states of the execution
+    states = output_json.get('states', {})
+    for var_name, var_value in states.get('variables', {}).items():
+        logger.debug(f'variables var_name: {var_name} var_value: {var_value}')
+        ic.variables[var_name] = var_value
+    for var_name, var_value in states.get('channel_variables', {}).items():
+        logger.debug(f'channel_variables var_name: {var_name} var_value: {var_value}')
+        ic.channel_variables[var_name] = var_value
+    for var_name, var_value in states.get('manual_input_variables', {}).items():
+        logger.debug(f'manual_input_variables var_name: {var_name} var_value: {var_value}')
+        ic.manual_input_variables[var_name] = var_value
+    for var_name, var_value in states.get('mil_1553_variables', {}).items():
+        logger.debug(f'mil_1553_variables var_name: {var_name} var_value: {var_value}')
+        ic.mil_1553_variables[var_name] = var_value
+
     # In the case of time out or pending, we want to kill all processes.
     # ERROR does not need any manual halting. All processes kill themselves when the subprocess dies.
     # Note: This needs to be done after downloading log files because halt will remove the 

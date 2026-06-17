@@ -8,6 +8,7 @@ import json
 import copy
 import requests
 import os
+import tarfile
 import redis
 from . import ingenium_config as ic
 from .logging_util import logger
@@ -424,10 +425,10 @@ def get_custom_script_start_url():
     return "{}/api/{}/custom_script/start".format(ic.venue_service_address, ic.venue_service_version)
 
 def get_custom_script_status_url():
-    return "{}/api/{}/custom_script/status".format(ic.venue_service_address, ic.venue_service_version)
+    return "{}/api/{}/custom_script".format(ic.venue_service_address, ic.venue_service_version)
 
 def halt_custom_script_url():
-    return "{}/api/{}/custom_script/halt".format(ic.venue_service_address, ic.venue_service_version)
+    return "{}/api/{}/custom_script".format(ic.venue_service_address, ic.venue_service_version)
   
 
 # Venue Simulator /test endpoints
@@ -1089,6 +1090,7 @@ def ing_execution(run_function):
                 elapsed_sec = time1 - time0
 
                 # set variable of the step execution results
+                # HK: I think this is used only for tests currently. To be revisited when we support execution level state variables.
                 if variable_name is not None:
                     if step_output.get('execution') is not None:
                         ic.variables[variable_name] = step_output.get('execution').get('results')
@@ -3521,6 +3523,7 @@ class CustomScriptResponse(object):
             "entries": step_input.get("entries"),
             "outputs": step_input.get("outputs"),
             "output_array": step_input.get("output_array"),
+            "output_summary": "",
             "venue_id": ic.venue_id,
             "venue_name": ic.venue_name,
             "venue_ampcs_address": ic.venue_service_address,            
@@ -3608,6 +3611,9 @@ class CustomScriptResponse(object):
                 else:
                     script_output_array_output = script_output_array_outputs[idx]
                     script_output_array_output["values"].append(value)
+
+        # output_summary
+        self.script_response["output_summary"] = output_object.get("output_summary", "")
 
         # update the following fields
         self.script_response["custom_script_status"] = script_status_info.get("custom_script_status")
@@ -3808,12 +3814,10 @@ def get_script_status(scriptRunId):
     header = get_authorization_header()
     path = get_custom_script_status_url()
    
-    body_data = {}
-
     if scriptRunId:
-        body_data["scriptRunId"] = scriptRunId
+        path = path + f'/{scriptRunId}'
 
-    return requests.get(path, json=body_data, headers=header, verify=ic.ssl_verify, timeout=ic.custom_script_timeout)
+    return requests.get(path, headers=header, verify=ic.ssl_verify, timeout=ic.custom_script_timeout)
 
 
 def halt_script(scriptRunId):
@@ -3821,14 +3825,12 @@ def halt_script(scriptRunId):
     header = get_authorization_header()
     path = halt_custom_script_url()
 
-    body_data = {}
-
     if scriptRunId:
-        body_data["scriptRunId"] = scriptRunId
+        path = path + f'/{scriptRunId}/halt'
 
     try:
         # custom script timeout constant is long, halting a script is a quick process so we will use ic.rest_timeout which is 20 secs.
-        halt_script_response = requests.post(path, json=body_data, headers=header, verify=ic.ssl_verify, timeout=ic.rest_timeout)
+        halt_script_response = requests.post(path, headers=header, verify=ic.ssl_verify, timeout=ic.rest_timeout)
         
         if halt_script_response.status_code != 204:
             
@@ -3855,7 +3857,7 @@ def halt_script(scriptRunId):
     # returns "204" if nominal response. 
     return halt_script_response.status_code
 
-def construct_object_name(file_name):
+def construct_object_name(file_name, script_run_id):
 
     now = datetime.utcnow()
     # ex: 2020-09-28
@@ -3863,16 +3865,16 @@ def construct_object_name(file_name):
 
     shortened_file_path = file_name.split("/")[-1]
 
-    object_name = "custom_scripts/{}/{}".format(date_stamp, shortened_file_path)
+    object_name = "custom_scripts/{}/{}/{}".format(date_stamp, script_run_id, shortened_file_path)
     logger.info("Constructed object name: {}".format(object_name))
     return object_name
 
-def upload_file_to_fileserver(file_name):
+def upload_file_to_fileserver(file_name, script_run_id):
 
     bucket = ic.media_bucket
 
     # construct path for filename : media_bucket/custom_scripts/datetime/file.tar.gz
-    fileserver_object_name = construct_object_name(file_name)
+    fileserver_object_name = construct_object_name(file_name, script_run_id)
 
     # Upload the file
     # Due to how boto3 works, the AWS access key, AWS secret access key, and default region are set
@@ -3895,7 +3897,7 @@ def upload_file_to_fileserver(file_name):
     # we will need the object name to retrieve the presigned url
     return full_fileserver_object_name
 
-def get_fileserver_logfile_url(logfile_partial_url, script_run_id):
+def process_cs_files(logfile_partial_url, script_run_id, custom_script_response=None):
 
     header = get_cs_files_authorization_header()
     path = get_custom_script_tar(logfile_partial_url)
@@ -3925,15 +3927,18 @@ def get_fileserver_logfile_url(logfile_partial_url, script_run_id):
                             http_code_at_source=0)
         raise StepExecutionError(str(ex), error_obj)   
 
-    # check if /tmp/custom_script_logs exists. If not create it.
-    base_temp_script_dir = "/tmp/custom_script_logs" 
+    # check if /tmp/custom_script_logs/script_run_id exists. If not create it.
+    base_temp_dir = "/tmp/custom_script_logs" 
+    # Add script_run_id to the path
+    base_temp_script_dir = os.path.join(base_temp_dir, script_run_id)
+
     if not os.path.exists(base_temp_script_dir):
         logger.info("Base temporary script log directory was not found, creating it!")
         # TODO: error capturing here
         try:
-            os.mkdir(base_temp_script_dir)
+            os.makedirs(base_temp_script_dir, exist_ok=True)
         except Exception as e:
-            msg = "There was an error making the temporary custom script directory: /tmp/custom_script_logs"
+            msg = f"There was an error making the temporary custom script directory: {base_temp_script_dir}"
             error_obj = create_step_error(message=msg,
                                 details=[str(e)],
                                 error_type=ErrorType.QUERY_ERROR.value,
@@ -3941,7 +3946,7 @@ def get_fileserver_logfile_url(logfile_partial_url, script_run_id):
                                 http_code_at_source=400)
             raise StepExecutionError(msg, error_obj)  
 
-    # store downloaded tarball locally. example filename: "/tmp/custom_script_logs/scriptRunId.tar.gz"
+    # store downloaded tarball locally. example filename: "/tmp/custom_script_logs/script_run_id/script_run_id.tar.gz"
     file_name_with_tar_extension = script_run_id + ".tar.gz"
     temp_cs_log_file = os.path.join(base_temp_script_dir, file_name_with_tar_extension)
     logger.info("Storing tar.gz locally in dir: {}".format(temp_cs_log_file))
@@ -3959,11 +3964,129 @@ def get_fileserver_logfile_url(logfile_partial_url, script_run_id):
                             http_code_at_source=400)
         raise StepExecutionError(msg, error_obj)  
 
+    top_level_folder = ""
+    file_name_set = set()
+    output_json = {}
+    if custom_script_response is not None:
+        # extract the tarball locally
+        try:
+            extract_dir = os.path.dirname(temp_cs_log_file)  # same directory as tarball
+            with tarfile.open(temp_cs_log_file, "r:gz") as tar:
+                files = tar.getnames()
+                logger.info("Tarball contains %d files: %s", len(files), files)
+                tar.extractall(path=extract_dir)
+            logger.info("Tarball extracted successfully! Extracted to %s", extract_dir)
+            # Get the top-level folder created by the tarball
+            if len(files) > 0:
+                top_level_folder = os.path.join(extract_dir, files[0].split("/")[0])
+                logger.info("Extracted top level folder: %s", top_level_folder)
+            else:
+                logger.warning(f"No file in tar file: {temp_cs_log_file}")
+        except Exception as e:
+            msg = "There was an issue extracting the logfile tarball."
+            error_obj = create_step_error(
+                message=msg,
+                details=[str(e)],
+                error_type=ErrorType.QUERY_ERROR.value,
+                error_source=ErrorSource.EMBEDDED_CODE.value,
+                http_code_at_source=400
+            )
+            raise StepExecutionError(msg, error_obj)
+        
+        try:
+            output_json_path = os.path.join(top_level_folder, 'output.json')
+            if top_level_folder and os.path.isfile(output_json_path):
+                with open(output_json_path, 'r') as file:
+                    output_json = json.load(file)
+            else:
+                msg = f'custom script output file was not found at: {output_json_path}'
+                logger.warning(msg)
+        except Exception as e:
+            msg = f'Error when parsing output.json of custom script. path: {output_json_path}'
+            logger.warning(msg)
+            
+        try:
+            script_response = custom_script_response.script_response
+
+            # List only files in that root folder
+            if top_level_folder:
+                file_name_set = {
+                    f for f in os.listdir(top_level_folder)
+                    if os.path.isfile(os.path.join(top_level_folder, f))
+                }
+            
+            logger.info("Files in root of extracted folder: %s", file_name_set)
+            # map from file name to URL in fileserver
+            uploaded_file_map = dict()
+
+            # Collect names where type matches FILE, IMAGE, or SERIES
+            file_types = {'FILE', 'IMAGE', 'SERIES'}
+
+            # Top-level outputs
+            outputs = script_response.get('outputs', [])
+            for output in outputs:
+                if output.get('type') in file_types:
+                    name = output.get('name', '')
+                    value = output.get('value', '')
+
+                    # If type is SERIES, force value to series.json
+                    if output.get('type') == 'SERIES':
+                        value = 'series.json'
+                        output['value'] = value  # keep the field consistent
+
+                    if value in file_name_set:
+                        if value in uploaded_file_map:
+                            # file has been already uploaded. Replace file name with URL
+                            logger.warning(f'File ({value}) has been already uploaded before output: {name}')
+                            output['value'] = uploaded_file_map[value]
+                        else:
+                            file_path = os.path.join(top_level_folder, value)
+                            uploaded_url = upload_file_to_fileserver(file_path, script_run_id)
+                            # replace file name with URL
+                            output['value'] = uploaded_url
+                            uploaded_file_map[value] = uploaded_url
+
+            # Entry outputs from each entry
+            entries = script_response.get('entries', [])
+            for entry in entries:
+                entry_outputs = entry.get('entry_outputs', [])
+                for entry_output in entry_outputs:
+                    if entry_output.get('type') in file_types:
+                        name = entry_output.get('name', '')
+                        value = entry_output.get('value', '')
+
+                        # If type is SERIES, force value to series.json
+                        if entry_output.get('type') == 'SERIES':
+                            value = 'series.json'
+                            entry_output['value'] = value  # keep the field consistent
+
+                        if value in file_name_set:
+                            if value in uploaded_file_map:
+                                # file has been already uploaded. Replace file name with URL
+                                logger.warning(f'File ({value}) has been already uploaded before entry_output: {name}')
+                                entry_output['value'] = uploaded_file_map[value]
+                            else:
+                                file_path = os.path.join(top_level_folder, value)
+                                uploaded_url = upload_file_to_fileserver(file_path, script_run_id)
+                                # replace file name with URL
+                                entry_output['value'] = uploaded_url
+                                uploaded_file_map[value] = uploaded_url
+        except Exception as e:
+            msg = "Error when uploading individual files of custom script"
+            error_obj = create_step_error(
+                message=msg,
+                details=[str(e)],
+                error_type=ErrorType.QUERY_ERROR.value,
+                error_source=ErrorSource.EMBEDDED_CODE.value,
+                http_code_at_source=400
+            )
+            raise StepExecutionError(msg, error_obj)
+
     # ASSUME the following config variables are present in ingenium config: access_key, secret_key, and media_bucket
     logger.info("Uploading tarball: {}".format(file_name_with_tar_extension))
     object_name = ""
     try:
-        object_name = upload_file_to_fileserver(temp_cs_log_file)
+        object_name = upload_file_to_fileserver(temp_cs_log_file, script_run_id)
     except Exception as e:
         logger.warning(str(e))       
     finally:
@@ -3972,7 +4095,7 @@ def get_fileserver_logfile_url(logfile_partial_url, script_run_id):
         os.remove(temp_cs_log_file)
         logger.info("Temp log file successfully removed: {}".format(temp_cs_log_file))
 
-    return object_name
+    return object_name, output_json
 
 class CustomScriptInputs(object):
     
@@ -3980,10 +4103,22 @@ class CustomScriptInputs(object):
         self.step_input = step_input
         
         self.input_json = OrderedDict({
-            "username": ""
+            "username": "",
+            "states": {
+                "variables": ic.variables,
+                "channel_variables": ic.channel_variables,
+                "manual_input_variables": ic.manual_input_variables,
+                "mil_1553_variables": ic.mil_1553_variables
+            }
         })
         self.output_json = OrderedDict({
-            "custom_script_status": "PENDING"
+            "custom_script_status": "PENDING",
+            "states": {
+                "variables": ic.variables,
+                "channel_variables": ic.channel_variables,
+                "manual_input_variables": ic.manual_input_variables,
+                "mil_1553_variables": ic.mil_1553_variables
+            }
         })
         
         self.construct_input_json()
@@ -4107,7 +4242,7 @@ class CustomScriptInputs(object):
 
                     raise StepExecutionError(str(ex), error_obj)     
 
-            elif type == "STRING":
+            elif type in ("STRING", "FLIGHT_COMMAND", "SIM_COMMAND", "FLIGHT_EVR", "SIM_EVR", "FLIGHT_TELEM", "SIM_TELEM", "VERIFICATION_COND", "FILE", "IMAGE", "SERIES"):
                 structure[name] = input.get("value")
 
             elif type == "BOOL":
