@@ -82,8 +82,8 @@ def run(step):
 
         error_obj = create_step_error(message=msg,
                         details=[],
-                        error_type=ing_lib.ErrorType.VENUE_SERVICE.value,
-                        error_source=ing_lib.ErrorSource.VENUE_SERVICE_ERROR.value,
+                        error_type=ing_lib.ErrorType.VENUE_SERVICE_ERROR.value,
+                        error_source=ing_lib.ErrorSource.VENUE_SERVICE.value,
                         http_code_at_source=0)
 
         logger.error(msg, extra= {
@@ -150,8 +150,8 @@ def run(step):
         # log statement
         error_obj = create_step_error(message=msg,
                         details=[],
-                        error_type=ing_lib.ErrorType.VENUE_SERVICE.value,
-                        error_source=ing_lib.ErrorSource.VENUE_SERVICE_ERROR.value,
+                        error_type=ing_lib.ErrorType.VENUE_SERVICE_ERROR.value,
+                        error_source=ing_lib.ErrorSource.VENUE_SERVICE.value,
                         http_code_at_source=0)
 
         logger.error(msg, extra= {

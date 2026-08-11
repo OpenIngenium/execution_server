@@ -1,11 +1,10 @@
-FROM cae-artifactory.jpl.nasa.gov:17001/python:3.7.2
-
-MAINTAINER Hongman Kim <hongman.kim@jpl.nasa.gov>
+FROM python:3.14-slim
 
 ### Execution Server
 WORKDIR /app
 COPY ./image /app
-RUN pip install --trusted-host cae-artifactory.jpl.nasa.gov  -r requirements.txt
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir -r requirements.txt
 
 ###
 EXPOSE 9999

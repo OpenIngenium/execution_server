@@ -10,3 +10,11 @@ tests/__pycache__
 .vscode
 image/__pycache__/
 image/ingenium_embedded/__pycache__/
+
+# Unit-test tooling artifacts
+.venv/
+.pytest_cache/
+htmlcov/
+.coverage
+coverage.xml
+tests/unit/**/__pycache__/

@@ -1,0 +1,25 @@
+# Development / unit-test dependencies for the Execution Server.
+#
+# Python test toolchain:
+#   pytest      - test runner
+#   pytest-cov  - coverage measurement
+#   pytest-mock - mocker fixture convenience wrapper around unittest.mock
+#
+# The production runtime pins (see image/requirements.txt) are intentionally NOT
+# duplicated here. Unit tests mock every external collaborator, so only the
+# libraries that the source imports at module-import time are required.
+pytest>=7.4
+pytest-cov>=4.0
+pytest-mock>=3.0
+
+# Runtime libraries imported by the source under test. Unit tests never perform
+# real I/O against these; they are required only so the modules can be imported.
+requests
+redis
+pyjwt
+boto3
+json-logging
+python-dateutil
+psutil
+cryptography
+tornado

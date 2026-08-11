@@ -1008,9 +1008,11 @@ class RunHandler(RequestLogHandler):
             exec_venue_jwt_encoded = jwt.encode(venue_token_dict,
                                                 exec_venue_private_pem,
                                                 algorithm='RS256')
-         
+            # PyJWT >= 2 returns a str; older versions returned bytes. Normalize to str.
+            exec_venue_jwt_str = exec_venue_jwt_encoded.decode('utf-8') if isinstance(exec_venue_jwt_encoded, bytes) else exec_venue_jwt_encoded
+
             # set token for venue service
-            self.application.state_manager.set_config_value(execution_id, 'venue_token', exec_venue_jwt_encoded.decode('utf-8'))
+            self.application.state_manager.set_config_value(execution_id, 'venue_token', exec_venue_jwt_str)
             # set the original ingenium token so that the embedded code can talk to venue config service
             self.application.state_manager.set_config_value(execution_id, 'ing_token', self.jwt_token)   
 

@@ -55,4 +55,4 @@ class CustomJSONLog(logging.Formatter):
         return json.dumps(json_log_object)
 
 def logger_init():
-    json_logging.init(custom_formatter=CustomJSONLog)
+    json_logging.init_non_web(custom_formatter=CustomJSONLog)

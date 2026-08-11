@@ -1,0 +1,39 @@
+# Unit-test runner configuration for the Execution Server.
+# See the README "Testing" section for details.
+
+[tool.pytest.ini_options]
+# Unit tests live under tests/unit and mirror the production source tree.
+testpaths = ["tests/unit"]
+
+# The source under test lives in image/ingenium_embedded. It is added to
+# sys.path by tests/unit/conftest.py so the package imports as
+# `ingenium_embedded`.
+pythonpath = ["image"]
+
+python_files = ["test_*.py"]
+python_classes = ["Test*"]
+python_functions = ["test_*"]
+
+# Coverage is scoped to first-party source only.
+# NOTE: --cov-fail-under is intentionally unset (reporting only) because this
+# repository contains very large legacy library modules and integration-scope
+# I/O paths not covered by unit tests. Raise it toward 100% as more modules are
+# migrated; do not lower coverage expectations to make failing tests pass.
+addopts = """
+--cov=ingenium_embedded
+--cov-report=term-missing
+--cov-report=html
+--cov-report=xml
+"""
+
+filterwarnings = [
+    "ignore::DeprecationWarning",
+]
+
+[tool.coverage.run]
+branch = true
+source = ["ingenium_embedded"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = false
