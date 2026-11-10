@@ -1,0 +1,654 @@
+swagger: "2.0"
+info:
+  version: "4.0.0"
+  title: Ingenium Execution API
+
+basePath: /api/v4
+schemes:
+  - http
+consumes:
+  - application/json
+produces:
+  - application/json
+  
+securityDefinitions:
+  UserSecurity:
+    type: apiKey
+    name: user_api_key
+    in: header
+  AdminSecurity:
+    type: apiKey
+    name: admin_api_key
+    in: header    
+
+security:
+  - UserSecurity: []
+  
+paths:
+  /executions/{execution_id}:
+    put:
+      tags:
+        - Execution
+      description: Register an execution
+      operationId: register_execution
+      parameters:
+        - $ref: "#/parameters/execution_id"      
+        - name: venue_info
+          in: body
+          description: information about the venue used
+          required: true
+          schema:
+            $ref: "#/definitions/VenueInfo"    
+      responses:
+        204:
+          description: Success        
+        default:
+          description: Error
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+
+    delete:
+      tags:
+        - Execution
+      description: Unregister an execution
+      operationId: unregister_execution
+      parameters:
+        - $ref: "#/parameters/execution_id"      
+      responses:
+        204:
+          description: Deleted
+        default:
+          description: Error
+          schema:
+            $ref: "#/definitions/ErrorResponse"            
+
+  /executions/{execution_id}/run:
+    post:
+      tags:
+        - Execution
+      description: Run a step
+      operationId: run_step
+      parameters:
+        - $ref: "#/parameters/execution_id"
+        - name: run_mode
+          in: query
+          description: run step in sync or asynchronous mode. Async mode will result in a HTTP 202 response.
+          required: false
+          type: string
+          enum:
+          - SYNC
+          - ASYNC
+          default: SYNC
+        - name: elem_id
+          in: query
+          description: element id to be executed. Use if step is not provided.
+          required: false
+          type: string
+        - name: step
+          in: body
+          description: Step to execute
+          required: false
+          schema:
+            $ref: "#/definitions/Step"      
+      responses:
+        200:
+          description: Success
+          schema:
+            $ref: "#/definitions/Step"
+        202:
+          description: Execution started
+          schema:
+            $ref: "#/definitions/Step"                                
+        default:
+          description: Error
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+            
+  /executions/{execution_id}/config_value:
+    get:
+      tags:
+        - Execution
+      description: Get value of a configuration variable of an execution
+      operationId: get_config_value
+      parameters:
+        - $ref: "#/parameters/execution_id"
+        - name: parameter_name
+          in: query
+          description: name of a configuration parameter of an execution
+          type: string
+          required: true        
+      responses:
+        200:
+          description: Success
+          schema:
+            $ref: "#/definitions/VariableValueResponse"          
+        default:
+          description: Error
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+
+  /executions/{execution_id}/variable_value:
+    get:
+      tags:
+        - Execution
+      description: Get value of a step variable
+      operationId: get_variable_value
+      parameters:
+        - $ref: "#/parameters/execution_id"
+        - name: variable_name
+          in: query
+          description: name of the variable in kernel
+          type: string
+          required: true        
+      responses:
+        200:
+          description: Success
+          schema:
+            $ref: "#/definitions/VariableValueResponse"          
+        default:
+          description: Error
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+                
+  /executions/{execution_id}/copy_state:
+    post:
+      tags:
+        - Execution
+      description: Copy execution state to another execution
+      operationId: copy_execution_state
+      parameters:
+        - $ref: "#/parameters/execution_id"
+        - name: target_execution_id
+          in: query
+          description: id of the target execution to which state will be copied
+          type: string
+          required: true        
+      responses:
+        200:
+          description: Array of execution state parameters
+          schema:
+            type: array
+            items:        
+              $ref: "#/definitions/VariableValueResponse"
+        default:
+          description: Error
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+
+  /executions/{execution_id}/switch:
+    post:
+      tags:
+        - Execution
+      description: Switch a worker to another execution (used for automatic execution)
+      operationId: switch_execution
+      parameters:
+        - $ref: "#/parameters/execution_id"
+        - name: target_execution_id
+          in: query
+          description: id of the target execution
+          type: string
+          required: true
+      responses:
+        204:
+          description: Updated
+        default:
+          description: Error
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+                
+  /executions/{execution_id}/halt:
+    post:
+      tags:
+        - Execution
+      description: Halt the execution if the kernel is running a step
+      operationId: halt_kernel
+      parameters:
+        - $ref: "#/parameters/execution_id"      
+      responses:
+        202:
+          description: Success
+        default:
+          description: Error
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+                       
+  /logging:
+    get:
+      tags:
+        - Logging
+      operationId: "get_logging"
+      description: Get logging configuration
+      responses:
+        200:
+          description: "Logging status info"
+          schema:
+            $ref: "#/definitions/LoggingInfo"
+        default:
+          description: "Error"
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+    
+    post:
+      tags:
+        - Logging
+      operationId: update_logging
+      description: Update logging configuration
+      parameters:
+        - name: logging_info
+          in: body
+          description: Logging info
+          required: true
+          schema:
+            $ref: "#/definitions/LoggingInfo" 
+      responses:
+        204:
+          description: "Updated"
+        default:
+          description: "Error"
+          schema:
+            $ref: "#/definitions/ErrorResponse"  
+            
+  /health:
+    get:
+      tags:
+      - Health
+      operationId: get_health
+      description: Get health status of the service
+      parameters: []
+      responses:
+        200:
+          description: Received service status
+          schema:
+            $ref: "#/definitions/HealthStatus"
+        default:
+          description: Error
+          schema:
+            $ref: "#/definitions/ErrorResponse"
+
+definitions:
+            
+  VenueInfo:
+    type: object
+    properties:
+      venue_id:
+        type: string
+      name:
+        type: string
+        description: Name of the venue (must be unique)
+      description:
+        type: string
+        description: Description of venue
+      ampcs_address:
+        type: string
+        description: "Network address of the machine that ampcs services/software\
+          \ is run from for the venue in question (i.e. wsts-17.example.com)"
+      sse_address:
+        type: string
+        description: "Network address of the machine that sse services/software is\
+          \ run from for the venue in question (i.e. wsts-17.example.com)"
+      location:
+        type: string
+        description: physical location of the machine (e.g., building 123)
+      type:
+        type: string
+        description: Type of venue
+        enum:
+        - WSTS
+        - Testbed
+        - ATLO
+        - Other
+
+  ProcedureElement:
+    discriminator: elem_type
+    properties:
+      elem_id:
+        type: string
+        description: The unique identifier of the element
+      elem_type:
+        type: string
+        description: Type of the element
+        enum:
+        - SECTION
+        - PROCEDURE_SECTION
+        - PARAGRAPH
+        - STEP
+      procedure_id:
+        type: string
+        description: id of the procedure to which the element belongs (null for elements of execution without procedure)        
+      procedure_section_id:
+        type: string
+        description: id of the procedure section that contains this element. This will be empty for elements that were not imported from a procedure.         
+      execution_id:
+        type: string
+        description: id of the execution to which the element belongs (null for elements of procedure)
+      parent_id:
+        type: string
+        description: id of the parent element. empty string for elements that are direct children of execution or procedure
+      number:
+        type: string
+        description: element number in procedure or execution
+      title:
+        type: string
+      description:
+        type: string
+      files:
+        type: array
+        items:
+          $ref: '#/definitions/FileInfo'
+      comments:
+        type: array
+        items:
+          $ref: '#/definitions/Comment'
+      procedure_modification_status:
+        type: string
+        description: |
+          whether any redline/blueline is associated with the element
+          * `NONE` - Not under run for score
+          * `ORIGINAL` - Original from procedure
+          * `MODIFIED` - Replaced by a redline
+          * `MODIFYING` - Redline/blueline element that replaces the original element
+          * `DELETED` - Redlined/bluelined by deletion
+          * `ADDED` - Redlined/bluelined by addition
+        enum:
+          - NONE
+          - ORIGINAL
+          - MODIFIED
+          - MODIFYING
+          - DELETED
+          - ADDED    
+      procedure_modification:
+        $ref: '#/definitions/ProcedureModification'       
+
+  FileInfo:
+    type: object
+    description: Meta data of an attached file
+    properties:
+      file_id:
+        type: string
+        description: unique id of the file resource
+      file_name:
+        type: string
+        description: original name of the file
+      execution_id:
+        type: string
+        description: id of the execution to which the file belongs
+      url:
+        type: string
+        description: download url of the file
+
+  Comment:
+    properties:
+      comment_id:
+        type: string
+        description: id of the comment
+      execution_id:
+        type: string
+        description: id of the execution to which the comment belongs
+      content:
+        type: string
+        description: comment text in HTML
+      time_updated:
+        description: Time the comment was created or updated
+        type: string
+      user_name:
+        description: Name of the user who commented
+        type: string
+      user_id:
+        description: User account name
+        type: string
+      files:
+        type: array
+        items:
+          $ref: '#/definitions/FileInfo'
+
+  ProcedureModification:
+    description: modification from procedure and its status
+    properties:
+      modification_type: 
+        description: type of the modification
+        type: string
+        enum:   
+        - NONE
+        - REDLINE
+        - BLUELINE   
+      justification:
+        $ref: '#/definitions/ModificationComment' 
+      approval:
+        $ref: '#/definitions/ModificationApproval'
+
+  ModificationComment:
+    description: comment to an element with procedure modifications
+    properties:
+      content:
+        type: string
+        description: comment text in HTML
+      user_name:
+        description: Name of the user
+        type: string 
+      time_updated:
+        description: Time the comment was created or updated
+        type: string   
+
+  ModificationApproval:
+    description: approval status of an element with procedure modifications (redline/blueline)
+    properties:
+      content:
+        type: string
+        description: comment text in HTML
+      user_name:
+        description: Name of the user who approved the modification 
+        type: string 
+      time_updated:
+        description: Time the modification was approved
+        type: string
+      status:                
+        description: approval status
+        type: string
+        enum:   
+        - PENDING
+        - APPROVED
+        - DISAPPROVED
+          
+  Step:
+    allOf:
+    - $ref: '#/definitions/ProcedureElement'
+    - type: object
+      properties:
+        step_type:
+          type: string
+          description: Type of the element
+          enum:
+          - MANUAL_INPUT
+          - MANUAL_EIP
+          - VENUE_CONFIG_MANUAL
+          - ENVIRONMENT_MANUAL
+          - GDS_MANUAL
+          - VERIFICATION_ITEM
+          - VERIFICATION_ITEM_STATUS
+          - GRAPH_EHA
+          - QUERY_EVR
+          - BUS_1553
+          - VERIFY_EHA     
+          - WAIT_EHA
+          - WAIT_EVR
+          - LIST_DATA_PRODUCTS
+          - WAIT_DATA_PRODUCTS
+          - CMD
+          - CMD_FILE
+          - CMD_SCMF     
+          - CMD_SSE  
+          - VENUE_CONFIG_GET
+          - VENUE_CONFIG_UPDATE
+          - VENUE_CONFIG_CHECK          
+          - MANUAL_VERIFICATION
+          - CUSTOM_SCRIPT        
+          - ANALYSIS
+          - WAIT  
+          - TOC
+        executed:
+          type: boolean
+          description: true if this step has been executed          
+        variable:
+          $ref: "#/definitions/Variable"
+        code:
+          $ref: "#/definitions/Code"
+        guard:
+          type: string
+          description: guard condition
+        notices:
+          type: array
+          items:
+            $ref: "#/definitions/Notice"               
+          
+  ErrorResponse:
+    properties:
+      message:
+        type: string
+        description: short error message
+      details:
+        type: array        
+        description: details about the error that may include stack trace
+        items:
+          type: string  
+      error_type:
+        type: string        
+        description: type of the error
+        enum:
+        - USER_INPUT_ERROR
+        - INGENIUM_SERVICE_ERROR           
+        - EXTERNAL_SERVICE_ERROR
+      error_source:
+        description: |
+          Service or S/W component where the error occurred
+        type: string
+        enum:
+        - AMPCS
+        - VENUE_SERVER           
+        - EMBEDDED_CODE  
+        - EXECUTION_KERNEL
+        - EXECUTION_SERVER
+        - VENUE_CONFIGURATION
+        - OTHER      
+      http_code_at_source:
+        type: integer
+        description: HTTP response status code of the root error at the source. Zero if not applicable.
+
+  Variable:
+    description: This maps the results of the step to a variable for use in guard functions 
+    type: object
+    required:
+      - name
+    properties:
+      name: 
+        description: Name of the variable that will be referenced
+        type: string        
+        
+  Code:
+    type: object
+    required:
+      - name
+    properties:
+      name:
+        description: Name of the function in Ingenium's version control that should be executed
+        type: string
+      commit:
+        description: Commit hash of the function to be executed 
+        type: string
+        default: Latest
+      release:
+        description: Tagged release of the function to be executed. Note that if release and commit are provided the release takes priority
+        type: string
+        default: Latest        
+
+  Notice:
+    type: object
+    required:
+      - category
+      - message
+    properties:
+      category:
+        description: type of notice
+        type: string
+        enum:
+          - TESTBED_WARNING
+          - PERSONNEL_CAUTION
+      message:
+        type: string
+        description: human readable message of the notice  
+        
+  VariableValueResponse: 
+    type: object
+    required:
+      - name
+      - value
+    properties:
+      name:
+        description: variable name
+        type: string
+      value:
+        description: variable value. Its format depends on type of the variable.
+        type: object                
+        
+  LoggingInfo:
+    type: object
+    required:
+      - level    
+    properties:
+      level:
+        type: string
+        description: Current log level
+        enum:
+        - CRITICAL
+        - ERROR
+        - WARNING
+        - INFO
+        - DEBUG
+        
+  HealthStatus:
+    type: object
+    required:
+    - status
+    properties:
+      status:
+        type: string
+        description: Current status of service
+        enum:
+        - OK
+        - ERROR
+        - UNKNOWN
+      message:
+        type: string
+        description: Any error message        
+
+parameters:
+
+  execution_id:
+    name: execution_id
+    in: path
+    description: unique id of execution
+    required: true
+    type: string    
+
+  kernel_id:
+    name: kernel_id
+    in: path
+    description: unique id of kernel
+    required: true
+    type: string    
+
+  offset:
+    name: offset    
+    in: query
+    description: Start index for pagination. zero based.
+    required: false
+    type: integer
+    default: 0
+    
+  limit:
+    name: limit
+    in: query
+    description: Max number of elements to return.
+    required: false
+    type: integer
+    default: 50
+  
